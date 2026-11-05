@@ -24,6 +24,7 @@ import androidx.annotation.WorkerThread
 import androidx.lifecycle.MediatorLiveData
 import androidx.lifecycle.MutableLiveData
 import java.util.Locale
+import org.json.JSONObject
 import org.linphone.LinphoneApplication.Companion.coreContext
 import org.linphone.LinphoneApplication.Companion.corePreferences
 import org.linphone.R
@@ -91,6 +92,21 @@ class ThirdPartySipAccountLoginViewModel
 
     private lateinit var newlyCreatedAuthInfo: AuthInfo
     private lateinit var newlyCreatedAccount: Account
+
+    private var websiteTurnSettings: JSONObject? = null
+
+    @UiThread
+    fun loginWebsiteAccount(settings: JSONObject) {
+        username.value = settings.getString("username")
+        password.value = settings.getString("password")
+        domain.value = settings.getString("domain")
+        proxy.value = settings.getString("proxy")
+        outboundProxy.value = settings.getString("proxy")
+        transport.value = settings.getString("transport")
+        displayName.value = settings.getString("display_name")
+        websiteTurnSettings = settings.optJSONObject("turn")
+        login()
+    }
 
     private val coreListener = object : CoreListenerStub() {
         @WorkerThread
@@ -224,7 +240,7 @@ class ThirdPartySipAccountLoginViewModel
             newlyCreatedAuthInfo = Factory.instance().createAuthInfo(
                 user,
                 userId,
-                password.value.orEmpty().trim(),
+                password.value.orEmpty(),
                 null,
                 null,
                 domainAddress?.domain ?: domainValue
@@ -237,6 +253,22 @@ class ThirdPartySipAccountLoginViewModel
                 identityAddress.displayName = displayName.value.orEmpty().trim()
             }
             accountParams.identityAddress = identityAddress
+
+            websiteTurnSettings?.let { turn ->
+                val policy = core.createNatPolicy()
+                policy.stunServer = turn.getString("server")
+                policy.stunServerUsername = turn.getString("username")
+                policy.isIceEnabled = true
+                policy.isStunEnabled = true
+                policy.isTurnEnabled = true
+                accountParams.natPolicy = policy
+                core.addAuthInfo(
+                    Factory.instance().createAuthInfo(
+                        turn.getString("username"), null, turn.getString("password"),
+                        null, null, null
+                    )
+                )
+            }
 
             val outboundProxyValue = outboundProxy.value.orEmpty().trim()
             val outboundProxyAddress = if (outboundProxyValue.isNotEmpty()) {

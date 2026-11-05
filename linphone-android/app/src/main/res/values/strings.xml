@@ -5,6 +5,13 @@
 ]>
 
 <resources>
+    <string name="connectdial_sign_in">Sign in</string>
+    <string name="connectdial_sign_up">Create account</string>
+    <string name="connectdial_connect_phone">Connect phone</string>
+    <string name="connectdial_website_login_help">Sign in with your ConnectDial website account. New accounts must verify their email.</string>
+    <string name="connectdial_connecting_phone">Connecting your phone…</string>
+    <string name="connectdial_connection_error">Could not connect to ConnectDial. Check your connection and tap Connect phone to retry.</string>
+    <string name="connectdial_page_error">Could not load ConnectDial. Check your connection and tap Sign in or Create account to retry.</string>
     <string name="app_name" translatable="false">&appName;</string>
 
     <!-- Not translatable strings -->
