@@ -1,20 +1,30 @@
 # ConnectDial Mobile
 
-The Android assistant signs in and creates accounts on **https://call.agrieldo.com**.
-It uses the existing website pages, including email confirmation, password resets,
-and two-factor authentication. Website passwords are never used as SIP passwords.
+The Android assistant keeps its native login screen and uses the original native
+registration page, with email signup connected to ConnectDial. Username or email and password are sent as JSON to
+`https://call.agrieldo.com/api/v1/auth/login/`. Registration sends `username`,
+`email`, `password`, and `password_confirmation` to `/api/v1/auth/register/`.
+Both return `access`, `token_type: Bearer`, and `expires_in: 300` when email
+verification is disabled. Registration uses the website's username, email,
+duplicate-account, and password validation rules.
 
-After sign-in, `/mobile/ready/` returns the user to the app's phone setup. The app
-reads `/mobile/provision/` with the authenticated website session and registers the
-user's assigned extension. The website session is cleared after SIP registration
-succeeds. No JavaScript bridge exposes credentials to web pages, and navigation is
-restricted to HTTPS on `call.agrieldo.com`.
+The app calls `/api/v1/phone/` with `Authorization: Bearer <access>` to fetch the
+user's assigned SIP credentials. The signed JWT is scoped to phone provisioning,
+expires after five minutes, and stays in memory during setup. Password changes
+and account deactivation invalidate it. There is no refresh token; retry sign-in
+if setup expires. Existing Knox API endpoints remain available for legacy clients.
+Website passwords are never used as SIP passwords. Password recovery opens the
+website in the browser. Native API two-factor integration remains deferred.
 
-Deploy the Django changes in the parent ConnectDial repository before using this
-version of the app. No database migration is required. Provisioning requires a
-verified website account, completion of configured two-factor authentication,
-and an available Hotdesk assigned to that user with a SIP secret and SIP server.
-The primary available extension is preferred. New sign-ups need an administrator
+If mandatory email verification is enabled, registration returns an account-created
+message and sends a confirmation email without issuing a JWT. Sign in after
+verification. New accounts without an assigned extension see an account-created
+message explaining the next step, rather than a registration failure.
+
+Deploy the Django changes in the parent repository before using this app.
+No database migration is required. Phone provisioning requires an available
+Hotdesk assigned to that user with a SIP secret and SIP server. The primary
+available eligible extension is preferred. New sign-ups need an administrator
 to assign an extension; they do not create PBX extensions automatically.
 
 Native SIP defaults to domain `call.agrieldo.com` and TLS proxy/outbound route
@@ -37,7 +47,6 @@ cd linphone-android
 ./gradlew :app:assembleDebug
 ```
 
-On a device, create/verify a website account or sign in with an existing one.
-Complete two-factor authentication if enabled. Phone setup runs after sign-in;
-use **Connect phone** to retry after assigning an extension or correcting a
-network problem. Verify registration and two-way audio on Wi-Fi and mobile data.
+On a device, sign in with an existing account or create one on the native registration page.
+Phone setup runs after sign-in; retry login after assigning an extension or
+correcting a network problem. Verify registration and two-way audio on Wi-Fi and mobile data.

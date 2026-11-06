@@ -40,14 +40,14 @@
                 <androidx.constraintlayout.widget.Group
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    app:constraint_referenced_ids="username_label, username, phone_number_label, phone_number, prefix, prefix_caret, password_label, password, eye, create, create_email_account_label"
-                    android:visibility="@{viewModel.pushNotificationsAvailable ? View.VISIBLE : View.GONE}"/>
+                    app:constraint_referenced_ids="username_label, username, phone_number_label, phone_number, password_label, password, eye, create, create_email_account_label"
+                    android:visibility="@{View.VISIBLE}"/>
 
                 <androidx.constraintlayout.widget.Group
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     app:constraint_referenced_ids="no_push, no_push_label"
-                    android:visibility="@{viewModel.pushNotificationsAvailable ? View.GONE : View.VISIBLE, default=gone}"/>
+                    android:visibility="@{View.GONE, default=gone}"/>
 
                 <androidx.constraintlayout.widget.Barrier
                     android:id="@+id/subscribe_barrier"
@@ -162,7 +162,7 @@
                     android:layout_marginEnd="16dp"
                     android:layout_marginTop="16dp"
                     android:labelFor="@id/phone_number"
-                    android:text="@{@string/phone_number + `*`}"
+                    android:text="Email*"
                     app:layout_constraintTop_toBottomOf="@id/username_error"
                     app:layout_constraintStart_toStartOf="@id/prefix"/>
 
@@ -180,6 +180,7 @@
                 <androidx.appcompat.widget.AppCompatSpinner
                     style="@style/default_text_style"
                     android:id="@+id/prefix"
+                    android:visibility="gone"
                     android:enabled="@{viewModel.pushNotificationsAvailable}"
                     android:layout_width="wrap_content"
                     android:layout_height="0dp"
@@ -199,6 +200,7 @@
 
                 <ImageView
                     android:id="@+id/prefix_caret"
+                    android:visibility="gone"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:src="@drawable/caret_down"
@@ -218,10 +220,10 @@
                     android:text="@={viewModel.phoneNumber, default=`6 01 02 03 04 05`}"
                     android:textSize="14sp"
                     android:textColor="?attr/color_main2_600"
-                    android:inputType="phone"
-                    android:drawableStart="@drawable/separator"
+                    android:inputType="textEmailAddress"
+                    android:paddingStart="20dp"
                     android:drawablePadding="10dp"
-                    android:hint="@string/phone_number"
+                    android:hint="Email"
                     android:background="@color/transparent_color"
                     app:layout_constraintWidth_max="@dimen/text_input_max_width"
                     app:layout_constraintTop_toBottomOf="@id/phone_number_label"
@@ -238,7 +240,7 @@
                     android:text="@{viewModel.phoneNumberError, default=`Error`}"
                     android:textSize="13sp"
                     android:textColor="?attr/color_danger_500"
-                    app:layout_constraintTop_toBottomOf="@id/prefix"
+                    app:layout_constraintTop_toBottomOf="@id/phone_number"
                     app:layout_constraintStart_toStartOf="@id/prefix"
                     app:layout_constraintEnd_toEndOf="@id/phone_number"/>
 
@@ -303,8 +305,8 @@
                     app:layout_constraintBottom_toBottomOf="@id/password" />
 
                 <androidx.appcompat.widget.AppCompatTextView
-                    android:onClick="@{() -> viewModel.askUserToConfirmPhoneNumber()}"
-                    android:enabled="@{viewModel.createEnabled &amp;&amp; !viewModel.operationInProgress, default=false}"
+                    android:onClick="@{createAccountClickListener}"
+                    android:enabled="@{!viewModel.operationInProgress}"
                     style="@style/primary_button_label_style"
                     android:id="@+id/create"
                     android:layout_width="0dp"
@@ -343,7 +345,7 @@
                     android:paddingBottom="6dp"
                     android:paddingStart="12dp"
                     android:paddingEnd="12dp"
-                    android:text="@string/assistant_web_platform_link"
+                    android:text="call.agrieldo.com"
                     android:textSize="13sp"
                     android:textColor="@color/secondary_button_label_color"
                     android:gravity="center"

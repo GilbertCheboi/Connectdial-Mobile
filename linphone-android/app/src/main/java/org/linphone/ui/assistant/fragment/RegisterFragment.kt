@@ -19,242 +19,78 @@
  */
 package org.linphone.ui.assistant.fragment
 
-import android.content.ActivityNotFoundException
-import android.content.Context
-import android.content.Intent
 import android.os.Bundle
-import android.telephony.TelephonyManager
-import android.text.Editable
-import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.AdapterView
-import android.widget.ArrayAdapter
-import androidx.annotation.UiThread
-import androidx.appcompat.widget.AppCompatTextView
+import androidx.appcompat.app.AlertDialog
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.navigation.navGraphViewModels
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import org.linphone.LinphoneApplication.Companion.coreContext
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import org.linphone.R
-import org.linphone.core.tools.Log
 import org.linphone.databinding.AssistantRegisterFragmentBinding
+import org.linphone.ui.GenericActivity
 import org.linphone.ui.GenericFragment
 import org.linphone.ui.assistant.viewmodel.AccountCreationViewModel
-import org.linphone.utils.ConfirmationDialogModel
-import org.linphone.utils.AppUtils
-import org.linphone.utils.DialogUtils
-import org.linphone.utils.PhoneNumberUtils
-import androidx.core.net.toUri
 
-@UiThread
 class RegisterFragment : GenericFragment() {
-    companion object {
-        private const val TAG = "[Register Fragment]"
-    }
-
     private lateinit var binding: AssistantRegisterFragmentBinding
+    private val viewModel: AccountCreationViewModel by navGraphViewModels(R.id.assistant_nav_graph)
 
-    private val viewModel: AccountCreationViewModel by navGraphViewModels(
-        R.id.assistant_nav_graph
-    )
-
-    private val dropdownListener = object : AdapterView.OnItemSelectedListener {
-        override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-            val dialPlan = viewModel.dialPlansList[position]
-            Log.i(
-                "$TAG Selected dialplan updated [+${dialPlan.countryCallingCode}] / [${dialPlan.country}]"
-            )
-            viewModel.selectedDialPlan.value = dialPlan
-        }
-
-        override fun onNothingSelected(parent: AdapterView<*>?) {
-        }
-    }
-
-    override fun onCreateView(
-        inflater: LayoutInflater,
-        container: ViewGroup?,
-        savedInstanceState: Bundle?
-    ): View {
-        binding = AssistantRegisterFragmentBinding.inflate(layoutInflater)
+    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
+        binding = AssistantRegisterFragmentBinding.inflate(inflater, container, false)
         return binding.root
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-
         binding.lifecycleOwner = viewLifecycleOwner
         binding.viewModel = viewModel
-        observeToastEvents(viewModel)
-
-        binding.setBackClickListener {
-            goBack()
-        }
-
-        binding.setLoginClickListener {
-            goBack()
-        }
-
+        binding.setBackClickListener { findNavController().popBackStack() }
+        binding.setLoginClickListener { findNavController().popBackStack() }
+        binding.setCreateAccountClickListener { register() }
         binding.setOpenSubscribeWebPageClickListener {
-            openSubscribeOnlineWebpage()
-        }
-
-        binding.username.addTextChangedListener(object : TextWatcher {
-            override fun afterTextChanged(s: Editable?) {
-                viewModel.usernameError.value = ""
-            }
-
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-        })
-
-        binding.phoneNumber.addTextChangedListener(object : TextWatcher {
-            override fun afterTextChanged(s: Editable?) {
-                viewModel.phoneNumberError.value = ""
-            }
-
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-        })
-
-        viewModel.normalizedPhoneNumberEvent.observe(viewLifecycleOwner) {
-            it.consume { number ->
-                showPhoneNumberConfirmationDialog(number)
-            }
-        }
-
-        viewModel.showPassword.observe(viewLifecycleOwner) {
-            lifecycleScope.launch {
-                delay(50)
-                binding.password.setSelection(binding.password.text?.length ?: 0)
-            }
-        }
-
-        viewModel.accountCantBeCreatedBySmsEvent.observe(viewLifecycleOwner) {
-            it.consume {
-                showPhoneNumberValidationNotAvailableDialog()
-            }
-        }
-
-        viewModel.goToSmsCodeConfirmationViewEvent.observe(viewLifecycleOwner) {
-            it.consume {
-                Log.i("$TAG Going to SMS code confirmation fragment")
-                if (findNavController().currentDestination?.id == R.id.registerFragment) {
-                    val action =
-                        RegisterFragmentDirections.actionRegisterFragmentToRegisterCodeConfirmationFragment()
-                    findNavController().navigate(action)
-                }
-            }
-        }
-
-        val telephonyManager = requireContext().getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
-        val countryIso = telephonyManager.networkCountryIso
-        coreContext.postOnCoreThread {
-            val fragmentContext = context ?: return@postOnCoreThread
-
-            val adapter = object : ArrayAdapter<String>(
-                fragmentContext,
-                R.layout.drop_down_item,
-                viewModel.dialPlansLabelList
-            ) {
-                override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
-                    val view = convertView ?: super.getView(position, null, parent)
-                    val label = viewModel.dialPlansShortLabelList[position]
-                    (view as? AppCompatTextView)?.text = label
-                    return view
-                }
-            }
-            adapter.setDropDownViewResource(R.layout.assistant_country_picker_dropdown_cell)
-
-            val dialPlan = PhoneNumberUtils.getDeviceDialPlan(countryIso)
-            var default = 0
-            if (dialPlan != null) {
-                viewModel.selectedDialPlan.postValue(dialPlan)
-                default = viewModel.dialPlansList.indexOf(dialPlan)
-            }
-
-            coreContext.postOnMainThread {
-                binding.prefix.adapter = adapter
-                binding.prefix.setSelection(default)
-                binding.prefix.onItemSelectedListener = dropdownListener
-            }
-        }
-    }
-
-    private fun goBack() {
-        findNavController().popBackStack()
-    }
-
-    private fun showPhoneNumberConfirmationDialog(number: String) {
-        val label  = AppUtils.getFormattedString(R.string.assistant_dialog_confirm_phone_number_message, number)
-        val model = ConfirmationDialogModel(label)
-        val dialog = DialogUtils.getAccountCreationPhoneNumberConfirmationDialog(
-            requireActivity(),
-            model
-        )
-
-        model.dismissEvent.observe(viewLifecycleOwner) {
-            it.consume {
-                dialog.dismiss()
-            }
-        }
-
-        model.confirmEvent.observe(viewLifecycleOwner) {
-            it.consume {
-                viewModel.startAccountCreation()
-                dialog.dismiss()
-            }
-        }
-
-        dialog.show()
-    }
-
-    private fun openSubscribeOnlineWebpage() {
-        val url = getString(R.string.web_platform_register_email_url)
-        try {
-            val browserIntent = Intent(Intent.ACTION_VIEW, url.toUri())
-            startActivity(browserIntent)
-        } catch (ise: IllegalStateException) {
-            Log.e(
-                "$TAG Can't start ACTION_VIEW intent for URL [$url], IllegalStateException: $ise"
-            )
-        } catch (anfe: ActivityNotFoundException) {
-            Log.e(
-                "$TAG Can't start ACTION_VIEW intent for URL [$url], ActivityNotFoundException: $anfe"
-            )
-        } catch (e: Exception) {
-            Log.e(
-                "$TAG Can't start ACTION_VIEW intent for URL [$url]: $e"
+            startActivity(
+                android.content.Intent(
+                    android.content.Intent.ACTION_VIEW,
+                android.net.Uri.parse("https://call.agrieldo.com/accounts/signup/")
+                )
             )
         }
     }
 
-    private fun showPhoneNumberValidationNotAvailableDialog() {
-        val model = ConfirmationDialogModel()
-        val dialog = DialogUtils.getAccountCreationPhoneNumberValidationNotAvailableDialog(
-            requireActivity(),
-            model
-        )
-
-        model.dismissEvent.observe(viewLifecycleOwner) {
-            it.consume {
-                dialog.dismiss()
+    private fun register() {
+        if (viewModel.operationInProgress.value == true) return
+        val password = binding.password.text.toString()
+        val body = JSONObject()
+            .put("username", binding.username.text.toString().trim())
+            .put("email", binding.phoneNumber.text.toString().trim())
+            .put("password", password)
+            .put("password_confirmation", password)
+        viewModel.operationInProgress.value = true
+        viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) { ConnectDialApi.request("auth/register/", body) }
+                viewModel.password.value = ""
+                AlertDialog.Builder(requireContext())
+                    .setTitle("Account created")
+                    .setMessage(result.optString("message", "Your ConnectDial account is ready. Ask your administrator to assign a phone extension, then sign in."))
+                    .setPositiveButton(android.R.string.ok) { _, _ -> findNavController().popBackStack() }
+                    .show()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                (requireActivity() as GenericActivity).showRedToast(
+                    error.message ?: "Unable to create account. Please try again.", R.drawable.warning_circle
+                )
+            } finally {
+                viewModel.operationInProgress.value = false
             }
         }
-
-        model.confirmEvent.observe(viewLifecycleOwner) {
-            it.consume {
-                openSubscribeOnlineWebpage()
-                dialog.dismiss()
-            }
-        }
-
-        dialog.show()
     }
 }

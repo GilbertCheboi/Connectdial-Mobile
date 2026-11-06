@@ -19,169 +19,265 @@
  */
 package org.linphone.ui.assistant.fragment
 
-import android.annotation.SuppressLint
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
 import android.os.Bundle
+import android.telephony.TelephonyManager
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.webkit.CookieManager
-import android.webkit.WebResourceError
-import android.webkit.WebResourceRequest
-import android.webkit.WebSettings
-import android.webkit.WebView
-import android.webkit.WebViewClient
-import android.widget.Button
-import android.widget.LinearLayout
-import android.widget.TextView
+import androidx.annotation.UiThread
 import androidx.fragment.app.viewModels
-import androidx.lifecycle.lifecycleScope
-import java.io.IOException
-import java.net.URL
-import javax.net.ssl.HttpsURLConnection
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
-import org.linphone.R
-import org.linphone.ui.GenericFragment
 import org.linphone.ui.assistant.viewmodel.ThirdPartySipAccountLoginViewModel
+import androidx.lifecycle.lifecycleScope
+import androidx.navigation.fragment.findNavController
+import androidx.navigation.navGraphViewModels
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import org.linphone.LinphoneApplication.Companion.coreContext
+import org.linphone.LinphoneApplication.Companion.corePreferences
+import org.linphone.R
+import org.linphone.core.tools.Log
+import org.linphone.databinding.AssistantLandingFragmentBinding
+import org.linphone.ui.GenericActivity
+import org.linphone.ui.GenericFragment
+import org.linphone.ui.assistant.model.AcceptConditionsAndPolicyDialogModel
+import org.linphone.ui.assistant.viewmodel.AccountLoginViewModel
+import org.linphone.utils.DialogUtils
+import org.linphone.utils.PhoneNumberUtils
+import androidx.core.net.toUri
 
-/** Uses the site's session flow, preserving email verification and two-factor login. */
+@UiThread
 class LandingFragment : GenericFragment() {
     companion object {
-        private const val ORIGIN = "https://call.agrieldo.com"
-        private const val NEXT = "?next=/mobile/ready/"
+        private const val TAG = "[Landing Fragment]"
     }
 
-    private val viewModel: ThirdPartySipAccountLoginViewModel by viewModels()
-    private var browser: WebView? = null
-    private lateinit var status: TextView
-    private lateinit var connect: Button
-    private var fetching = false
+    private val phoneModel: ThirdPartySipAccountLoginViewModel by viewModels()
+    private var signingIn = false
 
-    @SuppressLint("SetJavaScriptEnabled")
+    private lateinit var binding: AssistantLandingFragmentBinding
+
+    private val viewModel: AccountLoginViewModel by navGraphViewModels(
+        R.id.assistant_nav_graph
+    )
+
     override fun onCreateView(
-        inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
     ): View {
-        val context = requireContext()
-        val root = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        val actions = LinearLayout(context)
-
-        fun action(label: Int, path: String) {
-            actions.addView(
-                Button(context).apply {
-                setText(label)
-                setOnClickListener { browser?.loadUrl(ORIGIN + path + NEXT) }
-            },
-                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            )
-        }
-        action(R.string.connectdial_sign_in, "/accounts/login/")
-        action(R.string.connectdial_sign_up, "/accounts/signup/")
-        root.addView(actions)
-        status = TextView(context).apply { setText(R.string.connectdial_website_login_help) }
-        root.addView(status)
-        connect = Button(context).apply {
-            setText(R.string.connectdial_connect_phone)
-            setOnClickListener { provision() }
-        }
-        root.addView(connect)
-        browser = WebView(context).apply {
-            settings.javaScriptEnabled = true
-            settings.domStorageEnabled = true
-            settings.allowFileAccess = false
-            settings.allowContentAccess = false
-            settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-            CookieManager.getInstance().setAcceptThirdPartyCookies(this, false)
-            webViewClient = object : WebViewClient() {
-                override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                    val uri = request.url
-                    // Credentials and navigation stay on the configured HTTPS website.
-                    return uri.scheme != "https" || uri.host != "call.agrieldo.com" ||
-                        (uri.port != -1 && uri.port != 443)
-                }
-
-                override fun onPageFinished(view: WebView, url: String) {
-                    if (url.startsWith("$ORIGIN/mobile/ready/")) provision()
-                }
-
-                override fun onReceivedError(
-                    view: WebView, request: WebResourceRequest, error: WebResourceError
-                ) {
-                    if (request.isForMainFrame) status.setText(R.string.connectdial_page_error)
-                }
-            }
-            loadUrl("$ORIGIN/accounts/login/$NEXT")
-        }
-        root.addView(browser, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-        return root
+        binding = AssistantLandingFragmentBinding.inflate(layoutInflater)
+        return binding.root
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        observeToastEvents(viewModel)
-        viewModel.registrationInProgress.observe(viewLifecycleOwner) { busy ->
-            connect.isEnabled = !fetching && busy != true
+
+        binding.lifecycleOwner = viewLifecycleOwner
+        binding.viewModel = viewModel
+        binding.login.setOnClickListener { signIn() }
+        phoneModel.registrationInProgress.observe(viewLifecycleOwner) {
+            viewModel.registrationInProgress.value = it
         }
-        viewModel.accountLoggedInEvent.observe(viewLifecycleOwner) { event ->
-            event.consume {
-                // Do not retain a website session after the phone has been configured.
-                CookieManager.getInstance().removeAllCookies {
-                    CookieManager.getInstance().flush()
-                }
-                viewModel.password.value = ""
+        phoneModel.accountLoggedInEvent.observe(viewLifecycleOwner) { event ->
+            event.consume { requireActivity().finish() }
+        }
+        phoneModel.accountLoginErrorEvent.observe(viewLifecycleOwner) { event ->
+            event.consume { message -> showLoginError(message) }
+        }
+        observeToastEvents(viewModel)
+
+        binding.setBackClickListener {
+            requireActivity().finish()
+        }
+
+        binding.setHelpClickListener {
+            if (findNavController().currentDestination?.id == R.id.landingFragment) {
+                val action =
+                    LandingFragmentDirections.actionLandingFragmentToHelpFragment()
+                findNavController().navigate(action)
+            }
+        }
+
+        binding.setRegisterClickListener {
+            goToRegisterFragment()
+        }
+
+        binding.setQrCodeClickListener {
+            if (findNavController().currentDestination?.id == R.id.landingFragment) {
+                val action =
+                    LandingFragmentDirections.actionLandingFragmentToQrCodeScannerFragment()
+                findNavController().navigate(action)
+            }
+        }
+
+        binding.setThirdPartySipAccountLoginClickListener {
+            if (viewModel.conditionsAndPrivacyPolicyAccepted) {
+                goToLoginThirdPartySipAccountFragment(false)
+            } else {
+                showAcceptConditionsAndPrivacyDialog(goToThirdPartySipAccountLogin = true)
+            }
+        }
+
+        binding.setForgottenPasswordClickListener {
+            openUrlInBrowser("https://call.agrieldo.com/accounts/password/reset/")
+        }
+
+        viewModel.showPassword.observe(viewLifecycleOwner) {
+            lifecycleScope.launch {
+                delay(50)
+                binding.password.setSelection(binding.password.text?.length ?: 0)
+            }
+        }
+
+        viewModel.accountLoggedInEvent.observe(viewLifecycleOwner) {
+            it.consume {
+                Log.i("$TAG Account successfully logged-in, leaving assistant")
                 requireActivity().finish()
             }
         }
-        viewModel.accountLoginErrorEvent.observe(viewLifecycleOwner) { event ->
-            event.consume { status.text = it }
-        }
-    }
 
-    private fun provision() {
-        if (fetching || viewModel.registrationInProgress.value == true) return
-        fetching = true
-        connect.isEnabled = false
-        status.setText(R.string.connectdial_connecting_phone)
-        val cookies = CookieManager.getInstance().getCookie(ORIGIN).orEmpty()
-        viewLifecycleOwner.lifecycleScope.launch {
-            try {
-                val (code, data) = withContext(Dispatchers.IO) {
-                    val connection = URL("$ORIGIN/mobile/provision/").openConnection() as HttpsURLConnection
-                    try {
-                        connection.instanceFollowRedirects = false
-                        connection.connectTimeout = 15000
-                        connection.readTimeout = 15000
-                        connection.setRequestProperty("Cookie", cookies)
-                        connection.setRequestProperty("Accept", "application/json")
-                        val code = connection.responseCode
-                        val stream = if (code == 200) connection.inputStream else connection.errorStream
-                        val body = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-                        code to JSONObject(body)
-                    } finally {
-                        connection.disconnect()
-                    }
-                }
-                if (code == 200) {
-                    viewModel.loginWebsiteAccount(data)
-                } else {
-                    status.text = data.optString("message", getString(R.string.connectdial_connection_error))
-                }
-            } catch (_: IOException) {
-                status.setText(R.string.connectdial_connection_error)
-            } catch (_: org.json.JSONException) {
-                status.setText(R.string.connectdial_connection_error)
-            } finally {
-                fetching = false
-                connect.isEnabled = viewModel.registrationInProgress.value != true
+        viewModel.accountLoginErrorEvent.observe(viewLifecycleOwner) {
+            it.consume { message ->
+                (requireActivity() as GenericActivity).showRedToast(
+                    message,
+                    R.drawable.warning_circle
+                )
+            }
+        }
+
+        val telephonyManager = requireContext().getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
+        val countryIso = telephonyManager.networkCountryIso
+        coreContext.postOnCoreThread {
+            val dialPlan = PhoneNumberUtils.getDeviceDialPlan(countryIso)
+            if (dialPlan != null) {
+                viewModel.internationalPrefix.postValue(dialPlan.countryCallingCode)
+                viewModel.internationalPrefixIsoCountryCode.postValue(dialPlan.isoCountryCode)
             }
         }
     }
 
-    override fun onDestroyView() {
-        browser?.stopLoading()
-        browser?.destroy()
-        browser = null
-        super.onDestroyView()
+    private fun showLoginError(message: String) {
+        (requireActivity() as GenericActivity).showRedToast(message, R.drawable.warning_circle)
+    }
+
+    private fun signIn() {
+        if (signingIn || phoneModel.registrationInProgress.value == true) return
+        val username = viewModel.sipIdentity.value.orEmpty().trim()
+        val password = viewModel.password.value.orEmpty()
+        if (username.isEmpty() || password.isEmpty()) return
+        signingIn = true
+        viewModel.registrationInProgress.value = true
+        viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                val credentials = withContext(Dispatchers.IO) {
+                    val login = ConnectDialApi.request("auth/login/", JSONObject().put("username", username).put("password", password))
+                    val token = login.getString("access")
+                    // Keep the short-lived JWT in memory only during provisioning.
+                    ConnectDialApi.request("phone/", token = token)
+                }
+                viewModel.password.value = ""
+                phoneModel.loginWebsiteAccount(credentials)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                showLoginError(error.message ?: "Unable to sign in. Please try again.")
+            } finally {
+                signingIn = false
+                viewModel.registrationInProgress.value = phoneModel.registrationInProgress.value == true
+            }
+        }
+    }
+
+    private fun goToRegisterFragment() {
+        if (findNavController().currentDestination?.id == R.id.landingFragment) {
+            val action = LandingFragmentDirections.actionLandingFragmentToRegisterFragment()
+            findNavController().navigate(action)
+        }
+    }
+
+    private fun goToLoginThirdPartySipAccountFragment(skipWarning: Boolean) {
+        if (findNavController().currentDestination?.id == R.id.landingFragment) {
+            val action = if (skipWarning) {
+                LandingFragmentDirections.actionLandingFragmentToThirdPartySipAccountLoginFragment()
+            } else {
+                LandingFragmentDirections.actionLandingFragmentToThirdPartySipAccountWarningFragment()
+            }
+            findNavController().navigate(action)
+        }
+    }
+
+    private fun showAcceptConditionsAndPrivacyDialog(
+        goToAccountCreate: Boolean = false,
+        goToThirdPartySipAccountLogin: Boolean = false
+    ) {
+        val model = AcceptConditionsAndPolicyDialogModel()
+        val dialog = DialogUtils.getAcceptConditionsAndPrivacyDialog(
+            requireActivity(),
+            model
+        )
+
+        model.dismissEvent.observe(viewLifecycleOwner) {
+            it.consume {
+                dialog.dismiss()
+            }
+        }
+
+        model.conditionsAcceptedEvent.observe(viewLifecycleOwner) {
+            it.consume {
+                Log.i("$TAG Conditions & Privacy policy have been accepted")
+                coreContext.postOnCoreThread {
+                    corePreferences.conditionsAndPrivacyPolicyAccepted = true
+                }
+                dialog.dismiss()
+
+                if (goToAccountCreate) {
+                    goToRegisterFragment()
+                } else if (goToThirdPartySipAccountLogin) {
+                    goToLoginThirdPartySipAccountFragment(false)
+                }
+            }
+        }
+
+        model.privacyPolicyClickedEvent.observe(viewLifecycleOwner) {
+            it.consume {
+                val url = getString(R.string.website_privacy_policy_url)
+                openUrlInBrowser(url)
+            }
+        }
+
+        model.generalTermsClickedEvent.observe(viewLifecycleOwner) {
+            it.consume {
+                val url = getString(R.string.website_terms_and_conditions_url)
+                openUrlInBrowser(url)
+            }
+        }
+
+        dialog.show()
+    }
+
+    private fun openUrlInBrowser(url: String) {
+        try {
+            val browserIntent = Intent(Intent.ACTION_VIEW, url.toUri())
+            startActivity(browserIntent)
+        } catch (ise: IllegalStateException) {
+            Log.e(
+                "$TAG Can't start ACTION_VIEW intent for URL [$url], IllegalStateException: $ise"
+            )
+        } catch (anfe: ActivityNotFoundException) {
+            Log.e(
+                "$TAG Can't start ACTION_VIEW intent for URL [$url], ActivityNotFoundException: $anfe"
+            )
+        } catch (e: Exception) {
+            Log.e(
+                "$TAG Can't start ACTION_VIEW intent for URL [$url]: $e"
+            )
+        }
     }
 }
