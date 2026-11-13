@@ -1,5 +1,7 @@
 package org.linphone.ui.billing
 
+import android.content.Intent
+import android.net.Uri
 import android.text.InputType
 import android.view.View
 import android.widget.Button
@@ -144,16 +146,49 @@ internal class BillingController(private val activity: MainActivity, container: 
                 return@launch
             }
             val packages = data.getJSONArray("packages")
-            dialog = AlertDialog.Builder(activity).setTitle("Buy airtime · Kopo Kopo")
+            dialog = AlertDialog.Builder(activity).setTitle("Buy airtime")
                 .setItems(
                     Array(packages.length()) { i ->
                         packages.getJSONObject(i).let {
                     "KES ${it.getString("amount")} · ${it.getInt("minutes")} minutes"
                 }
                 }
-                ) { _, index -> phone(packages.getJSONObject(index)) }
+                ) { _, index ->
+                    if (data.optString("payment_provider") == "paystack") {
+                        checkout(packages.getJSONObject(index))
+                    } else {
+                        phone(packages.getJSONObject(index))
+                    }
+                }
                 .setNegativeButton(android.R.string.cancel, null).show()
         }
+    }
+
+    private fun checkout(pack: JSONObject) {
+        val key = UUID.randomUUID().toString()
+        dialog = AlertDialog.Builder(activity).setTitle("KES ${pack.getString("amount")} airtime")
+            .setMessage("Pay with M-PESA or card through Paystack. Credit appears after verification.")
+            .setPositiveButton("Continue to Paystack") { _, _ ->
+                purchaseJob = activity.lifecycleScope.launch {
+                    try {
+                        val order = request(
+                            "purchases/",
+                            JSONObject().put("package_id", pack.getString("id"))
+                            .put("idempotency_key", key)
+                        )
+                        val address = order.optString("checkout_url")
+                        if (!address.matches(Regex("https://checkout\\.paystack\\.com/[A-Za-z0-9_-]+"))) {
+                            message("Payment ${order.optString("status")}. Refresh your balance before retrying.")
+                            return@launch
+                        }
+                        activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(address)))
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        message(error.message ?: "Unable to open checkout. Refresh your balance before retrying.")
+                    }
+                }
+            }.setNegativeButton(android.R.string.cancel, null).show()
     }
 
     private fun phone(pack: JSONObject) {
