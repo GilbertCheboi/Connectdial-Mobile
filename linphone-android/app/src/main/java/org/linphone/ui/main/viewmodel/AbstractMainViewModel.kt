@@ -48,6 +48,14 @@ open class AbstractMainViewModel
 
     val account = MutableLiveData<AccountModel>()
 
+    val airtimeAvailable = MutableLiveData(false)
+    val airtimeDescription = MutableLiveData("Airtime balance and buy airtime")
+    val openAirtimeEvent = MutableLiveData<Event<Boolean>>()
+
+    fun openAirtime() {
+        openAirtimeEvent.value = Event(true)
+    }
+
     val searchBarVisible = MutableLiveData<Boolean>()
 
     val searchFilter = MutableLiveData<String>()

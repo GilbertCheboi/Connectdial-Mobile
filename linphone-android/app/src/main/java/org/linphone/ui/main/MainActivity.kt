@@ -195,9 +195,9 @@ class MainActivity : GenericActivity() {
 
         super.onCreate(savedInstanceState)
 
+        billingController = org.linphone.ui.billing.BillingController(this)
         binding = DataBindingUtil.setContentView(this, R.layout.main_activity)
         binding.lifecycleOwner = this
-        billingController = org.linphone.ui.billing.BillingController(this, binding.notificationsArea)
         setUpToastsArea(binding.toastsArea)
 
         // Will give the device's status bar background color
@@ -474,6 +474,13 @@ class MainActivity : GenericActivity() {
             )
             requestCallRedirectionPermissionsAndRole()
         }
+    }
+
+    internal fun bindAirtimeHeader(
+        viewModel: org.linphone.ui.main.viewmodel.AbstractMainViewModel,
+        owner: androidx.lifecycle.LifecycleOwner
+    ) {
+        billingController?.bind(viewModel, owner)
     }
 
     override fun onDestroy() {

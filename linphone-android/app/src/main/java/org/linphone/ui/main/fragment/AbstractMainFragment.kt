@@ -126,6 +126,7 @@ abstract class AbstractMainFragment : GenericMainFragment() {
         }
 
         viewModel = abstractMainViewModel
+        (requireActivity() as MainActivity).bindAirtimeHeader(viewModel, viewLifecycleOwner)
 
         viewModel.openDrawerMenuEvent.observe(viewLifecycleOwner) {
             it.consume {

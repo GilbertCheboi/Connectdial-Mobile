@@ -71,6 +71,8 @@
             android:gravity="center_vertical"
             android:text="@{viewModel.title, default=`Title`}"
             android:textColor="?attr/color_text"
+            android:maxLines="1"
+            android:ellipsize="end"
             android:textSize="28sp"
             android:includeFontPadding="false"
             app:layout_constraintEnd_toStartOf="@id/search_toggle"
@@ -87,10 +89,31 @@
             android:layout_marginEnd="5dp"
             android:src="@drawable/magnifying_glass"
             android:contentDescription="@string/content_description_open_filter"
-            app:layout_constraintEnd_toStartOf="@id/extra_action"
+            app:layout_constraintEnd_toStartOf="@id/airtime_action"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintBottom_toBottomOf="parent"
             app:tint="?attr/color_main2_600" />
+
+        <androidx.appcompat.widget.AppCompatTextView
+            android:id="@+id/airtime_action"
+            android:layout_width="64dp"
+            android:layout_height="0dp"
+            android:minHeight="48dp"
+            android:gravity="center"
+            android:singleLine="true"
+            android:text="@string/connectdial_airtime_action"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:textColor="?attr/color_text"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:focusable="true"
+            android:clickable="true"
+            android:contentDescription="@{viewModel.airtimeDescription}"
+            android:onClick="@{() -> viewModel.openAirtime()}"
+            android:visibility="@{!viewModel.searchBarVisible &amp;&amp; viewModel.airtimeAvailable ? View.VISIBLE : View.GONE, default=gone}"
+            app:layout_constraintEnd_toStartOf="@id/extra_action"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent" />
 
         <ImageView
             style="@style/icon_top_bar_button_style"

@@ -3,12 +3,12 @@ package org.linphone.ui.billing
 import android.content.Intent
 import android.net.Uri
 import android.text.InputType
-import android.view.View
-import android.widget.Button
 import android.widget.EditText
-import android.widget.LinearLayout
 import androidx.appcompat.app.AlertDialog
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.lifecycleScope
+import org.linphone.ui.main.viewmodel.AbstractMainViewModel
 import java.util.UUID
 import kotlin.coroutines.resume
 import kotlinx.coroutines.CancellationException
@@ -26,16 +26,18 @@ import org.linphone.core.CoreListenerStub
 import org.linphone.ui.assistant.fragment.ConnectDialApi
 import org.linphone.ui.main.MainActivity
 
-/** A visible, identity-bound wallet strip above the main screen. Never uses SIP secrets for billing. */
-internal class BillingController(private val activity: MainActivity, container: LinearLayout) {
+/** Identity-bound airtime actions presented by the existing main header. */
+internal class BillingController(private val activity: MainActivity) {
     private val store = try { BillingSessionStore(activity) } catch (_: Exception) { null }
-    private val button = Button(activity).apply {
-        visibility = View.GONE
-        text = "Airtime"
-        contentDescription = "Airtime balance and buy airtime"
-        isAllCaps = false
-        setOnClickListener { open() }
+    private val available = MutableLiveData(false)
+    private val description = MutableLiveData("Airtime balance and buy airtime")
+
+    fun bind(viewModel: AbstractMainViewModel, owner: LifecycleOwner) {
+        available.observe(owner) { viewModel.airtimeAvailable.value = it }
+        description.observe(owner) { viewModel.airtimeDescription.value = it }
+        viewModel.openAirtimeEvent.observe(owner) { event -> event.consume { open() } }
     }
+
     private var refreshJob: Job? = null
     private var purchaseJob: Job? = null
     private var dialog: AlertDialog? = null
@@ -51,7 +53,6 @@ internal class BillingController(private val activity: MainActivity, container: 
     }
 
     init {
-        container.addView(button)
         coreContext.postOnCoreThread { core -> core.addListener(listener) }
     }
 
@@ -65,7 +66,7 @@ internal class BillingController(private val activity: MainActivity, container: 
         val revoked = store?.load()
         store?.clear()
         activity.runOnUiThread {
-            current = null; wallet = null; button.visibility = View.GONE
+            current = null; wallet = null; available.value = false
             dialog?.dismiss(); dialog = null; purchaseJob?.cancel()
         }
         if (revoked != null) {
@@ -103,17 +104,17 @@ internal class BillingController(private val activity: MainActivity, container: 
     }
 
     private suspend fun refresh() {
-        if (session() == null) { button.visibility = View.GONE; return }
+        if (session() == null) { available.value = false; return }
         try {
             val data = request("wallet/")
             wallet = data
             val held = if (!data.isNull("active_call")) " · KES ${data.getString("reserved")} held" else ""
-            button.text = "KES ${data.getString("available")} · ${data.getString("available_minutes")} min$held · Buy airtime"
-            button.visibility = View.VISIBLE
+            description.value = "KES ${data.getString("available")} · ${data.getString("available_minutes")} min$held · Buy airtime"
+            available.value = true
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
-            if (store?.load() != null) { button.text = "Airtime unavailable · Retry"; button.visibility = View.VISIBLE }
+            if (store?.load() != null) { description.value = "Airtime unavailable · Retry"; available.value = true }
         }
     }
 
