@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="connectdial_reset_title">Reset your password</string>
+    <string name="connectdial_reset_description">Enter your account email. We will email a secure link to set a new website and app password.</string>
+    <string name="connectdial_reset_email">Account email address</string>
+    <string name="connectdial_reset_send">Send reset link</string>
+    <string name="connectdial_reset_invalid_email">Enter a valid email address</string>
+    <string name="connectdial_reset_sent">Check your email</string>
+    <string name="connectdial_accounts">Accounts and organizations</string>
+    <string name="connectdial_personal">Personal account</string>
+    <string name="connectdial_personal_create">Create personal account</string>
+    <string name="connectdial_join">Join an organization</string>
+    <string name="connectdial_apply">Apply for a new organization</string>
+    <string name="connectdial_accept_invitation">Accept an invitation</string>
+    <string name="connectdial_requests">Application and membership requests</string>
+    <string name="connectdial_legacy_phone">Connect my existing assigned phone</string>
+    <string name="connectdial_platform_review">Review organization applications</string>
+    <string name="connectdial_search">Organization name</string>
+    <string name="connectdial_org_name">New organization name</string>
+    <string name="connectdial_contact_email">Organization contact email</string>
+    <string name="connectdial_submitted">Request submitted</string>
+    <string name="connectdial_application_pending">Your application is awaiting platform approval. Dedicated PBX setup starts after approval.</string>
+    <string name="connectdial_membership_pending">An organization administrator must approve your membership. Phone setup waits for the organization PBX.</string>
+    <string name="connectdial_invitation_token">Invitation token</string>
+    <string name="connectdial_no_requests">No pending requests on this page.</string>
+    <string name="connectdial_mock_pending">Mock provisioning: phone setup is simulated. This context cannot connect SIP calls yet.</string>
+    <string name="connectdial_phone_status">View phone setup status</string>
+    <string name="connectdial_membership_review">Review membership requests</string>
+    <string name="connectdial_invite">Invite a member by email</string>
+    <string name="connectdial_recipient_email">Recipient verified email</string>
+    <string name="connectdial_invitation_created">Copy invitation token — shown once</string>
+    <string name="connectdial_more">More results</string>
+    <string name="connectdial_no_organizations">No public organizations found. Private organizations require an invitation.</string>
+    <string name="connectdial_approve">Approve</string>
+    <string name="connectdial_reject">Reject</string>
+    <string name="connectdial_required">Required</string>
+    <string name="connectdial_request_failed">Unable to complete request</string>
+    <string name="connectdial_signup_type">Choose your account type</string>
+    <string name="connectdial_copy_token">Copy token</string>
+    <string name="connectdial_verify_on_web">Accounts and organizations require a verified email and website two-factor authentication when enabled. Open the website to verify your email or manage onboarding. You can still explicitly connect your existing assigned phone under its existing sign-in policy.</string>
+    <string name="connectdial_open_verification">Open website verification</string>
+</resources>

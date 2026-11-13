@@ -11,4 +11,5 @@
    <exclude domain="sharedpref" path="device.xml"/>
     -->
     <exclude domain="sharedpref" path="encrypted.pref"/>
+    <exclude domain="sharedpref" path="connectdial_billing_session.xml"/>
 </full-backup-content>

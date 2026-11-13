@@ -98,6 +98,7 @@ class MainActivity : GenericActivity() {
     }
 
     private lateinit var binding: MainActivityBinding
+    private var billingController: org.linphone.ui.billing.BillingController? = null
 
     private lateinit var viewModel: MainViewModel
 
@@ -196,6 +197,7 @@ class MainActivity : GenericActivity() {
 
         binding = DataBindingUtil.setContentView(this, R.layout.main_activity)
         binding.lifecycleOwner = this
+        billingController = org.linphone.ui.billing.BillingController(this, binding.notificationsArea)
         setUpToastsArea(binding.toastsArea)
 
         // Will give the device's status bar background color
@@ -474,7 +476,13 @@ class MainActivity : GenericActivity() {
         }
     }
 
+    override fun onDestroy() {
+        billingController?.destroy()
+        super.onDestroy()
+    }
+
     override fun onPause() {
+        billingController?.pause()
         viewModel.enableAccountMonitoring(false)
 
         currentlyDisplayedAuthDialog?.dismiss()
@@ -507,6 +515,7 @@ class MainActivity : GenericActivity() {
 
     override fun onResume() {
         super.onResume()
+        billingController?.resume()
 
         viewModel.enableAccountMonitoring(true)
         viewModel.updateMissingPermissionAlert()

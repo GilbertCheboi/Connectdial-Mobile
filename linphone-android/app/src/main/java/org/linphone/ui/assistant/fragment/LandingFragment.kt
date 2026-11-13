@@ -126,7 +126,7 @@ class LandingFragment : GenericFragment() {
         }
 
         binding.setForgottenPasswordClickListener {
-            openUrlInBrowser("https://call.agrieldo.com/accounts/password/reset/")
+            showPasswordReset()
         }
 
         viewModel.showPassword.observe(viewLifecycleOwner) {
@@ -176,23 +176,79 @@ class LandingFragment : GenericFragment() {
         viewModel.registrationInProgress.value = true
         viewLifecycleOwner.lifecycleScope.launch {
             try {
+                val appContext = requireContext().applicationContext
                 val credentials = withContext(Dispatchers.IO) {
                     val login = ConnectDialApi.request("auth/login/", JSONObject().put("username", username).put("password", password))
-                    val token = login.getString("access")
-                    // Keep the short-lived JWT in memory only during provisioning.
-                    ConnectDialApi.request("phone/", token = token)
+                    val phone = ConnectDialApi.request("phone/", token = login.getString("access"))
+                    // Billing is optional for legacy accounts and must never interrupt SIP login.
+                    try {
+                        val store = org.linphone.ui.billing.BillingSessionStore(appContext)
+                        store.clear()
+                        try {
+                            val session = ConnectDialApi.request("billing/session/", JSONObject(), login.getString("access"))
+                            store.save(session.getString("token"), session.getLong("expires_in"), phone.getString("username"), phone.getString("domain"))
+                        } catch (_: Exception) { /* Existing website sign-in remains available. */ }
+                    } catch (_: Exception) { /* Keystore unavailable: do not persist a fallback credential. */ }
+                    phone
                 }
                 viewModel.password.value = ""
+                // Hold the UI guard before the SIP model queues its core-thread work.
+                phoneModel.registrationInProgress.value = true
                 phoneModel.loginWebsiteAccount(credentials)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
+                phoneModel.registrationInProgress.value = false
                 showLoginError(error.message ?: "Unable to sign in. Please try again.")
             } finally {
                 signingIn = false
                 viewModel.registrationInProgress.value = phoneModel.registrationInProgress.value == true
             }
         }
+    }
+
+    private fun showPasswordReset() {
+        val email = android.widget.EditText(requireContext()).apply {
+            hint = getString(R.string.connectdial_reset_email)
+            contentDescription = hint
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
+            setSingleLine(true)
+            val current = viewModel.sipIdentity.value.orEmpty().trim()
+            if (android.util.Patterns.EMAIL_ADDRESS.matcher(current).matches()) setText(current)
+        }
+        val dialog = androidx.appcompat.app.AlertDialog.Builder(requireContext())
+            .setTitle(R.string.connectdial_reset_title).setMessage(R.string.connectdial_reset_description)
+            .setView(email).setPositiveButton(R.string.connectdial_reset_send, null)
+            .setNegativeButton(android.R.string.cancel, null).create()
+        dialog.setOnShowListener {
+            dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val address = email.text.toString().trim()
+                if (!android.util.Patterns.EMAIL_ADDRESS.matcher(address).matches()) {
+                    email.error = getString(R.string.connectdial_reset_invalid_email)
+                    return@setOnClickListener
+                }
+                val button = dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE)
+                button.isEnabled = false
+                viewLifecycleOwner.lifecycleScope.launch {
+                    try {
+                        val response = withContext(Dispatchers.IO) {
+                            ConnectDialApi.request("auth/password/reset/", JSONObject().put("email", address))
+                        }
+                        dialog.dismiss()
+                        androidx.appcompat.app.AlertDialog.Builder(requireContext())
+                            .setTitle(R.string.connectdial_reset_sent)
+                            .setMessage(response.getString("message"))
+                            .setPositiveButton(android.R.string.ok, null).show()
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        email.error = error.message ?: getString(R.string.connectdial_request_failed)
+                        button.isEnabled = true
+                    }
+                }
+            }
+        }
+        dialog.show()
     }
 
     private fun goToRegisterFragment() {
